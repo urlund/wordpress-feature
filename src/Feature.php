@@ -38,6 +38,17 @@ class Feature {
 		'action' => array(),
 	);
 
+	/**
+	 * @var array{
+	 *     filter: array<string, array{method: string, priority: int}>,
+	 *     action: array<string, array{method: string, priority: int}>
+	 * }
+	 */
+	private $paused = array(
+		'filter' => array(),
+		'action' => array(),
+	);
+
 	public function __construct() {
 		if ( self::has( static::class ) ) {
 			_doing_it_wrong(
@@ -154,6 +165,14 @@ class Feature {
 		$this->unregister_hook( 'filter', $hook );
 	}
 
+	public function pause_filter( string $hook ): void {
+		$this->pause_hook( 'filter', $hook );
+	}
+
+	public function resume_filter( string $hook ): void {
+		$this->resume_hook( 'filter', $hook );
+	}
+
 	/**
 	 * @param null|int|string|array{0: string, 1: int} $config Hook config.
 	 */
@@ -163,6 +182,14 @@ class Feature {
 
 	public function remove_action( string $hook ): void {
 		$this->unregister_hook( 'action', $hook );
+	}
+
+	public function pause_action( string $hook ): void {
+		$this->pause_hook( 'action', $hook );
+	}
+
+	public function resume_action( string $hook ): void {
+		$this->resume_hook( 'action', $hook );
 	}
 
 	/**
@@ -281,9 +308,7 @@ class Feature {
 	 * @param null|int|string|array{0: string, 1: int} $config Hook config.
 	 */
 	private function register_hook( string $type, string $hook, $config ): void {
-		if ( isset( $this->registered[ $type ][ $hook ] ) ) {
-			$this->unregister_hook( $type, $hook );
-		}
+		$this->unregister_hook( $type, $hook );
 
 		list( $method, $priority ) = $this->resolve_hook_registration( $hook, $config );
 
@@ -309,6 +334,23 @@ class Feature {
 	}
 
 	private function unregister_hook( string $type, string $hook ): void {
+		if ( isset( $this->registered[ $type ][ $hook ] ) ) {
+			$entry    = $this->registered[ $type ][ $hook ];
+			$callback = array( $this, $entry['method'] );
+
+			if ( 'filter' === $type ) {
+				remove_filter( $hook, $callback, $entry['priority'] );
+			} else {
+				remove_action( $hook, $callback, $entry['priority'] );
+			}
+
+			unset( $this->registered[ $type ][ $hook ] );
+		}
+
+		unset( $this->paused[ $type ][ $hook ] );
+	}
+
+	private function pause_hook( string $type, string $hook ): void {
 		if ( ! isset( $this->registered[ $type ][ $hook ] ) ) {
 			return;
 		}
@@ -322,6 +364,28 @@ class Feature {
 			remove_action( $hook, $callback, $entry['priority'] );
 		}
 
+		$this->paused[ $type ][ $hook ] = $entry;
 		unset( $this->registered[ $type ][ $hook ] );
+	}
+
+	private function resume_hook( string $type, string $hook ): void {
+		if ( ! isset( $this->paused[ $type ][ $hook ] ) ) {
+			return;
+		}
+
+		$entry         = $this->paused[ $type ][ $hook ];
+		$method        = $entry['method'];
+		$priority      = $entry['priority'];
+		$accepted_args = $this->resolve_accepted_args( $method );
+		$callback      = array( $this, $method );
+
+		if ( 'filter' === $type ) {
+			add_filter( $hook, $callback, $priority, $accepted_args );
+		} else {
+			add_action( $hook, $callback, $priority, $accepted_args );
+		}
+
+		$this->registered[ $type ][ $hook ] = $entry;
+		unset( $this->paused[ $type ][ $hook ] );
 	}
 }
