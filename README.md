@@ -88,6 +88,8 @@ Each `$filters` / `$actions` entry normalizes to hook name, callback method, and
 | `'foo_filter' => 'bar_callback'` | `foo_filter` | `bar_callback` | `10` |
 | `'wp_loaded' => ['setup', 20]` | `wp_loaded` | `setup` | `20` |
 
+For multiple callbacks on one hook, see [Multiple callbacks](#multiple-callbacks).
+
 Invalid shapes throw `InvalidArgumentException`. Missing callback methods also throw.
 
 ## Parent merging
@@ -112,6 +114,42 @@ class Auth extends BaseAuth {
     ];
 }
 ```
+
+## Multiple callbacks
+
+Most features need one callback per hook. When one feature must attach several methods to the same hook, use a method→priority map:
+
+```php
+protected $filters = [
+    'the_content' => [
+        'sanitize' => 10,
+        'append'   => 20,
+    ],
+];
+
+public function sanitize( string $content ): string {
+    return $content;
+}
+
+public function append( string $content ): string {
+    return $content;
+}
+```
+
+The same map form works on `$actions`. Identity inside a feature is `(hook, method)`; priority is metadata only, not part of the key.
+
+Parent merging still replaces the **whole** hook config when a child redeclares that hook (a map replaces a single callback and vice versa).
+
+Target one callback or all for a hook:
+
+```php
+$auth->pause_filter( 'the_content' );           // all callbacks
+$auth->pause_filter( 'the_content', 'append' ); // only append
+$auth->resume_filter( 'the_content', 'append' );
+$auth->remove_filter( 'the_content', 'sanitize' );
+```
+
+`resume_*` and `remove_*` use the same optional second `$method` argument (including for actions).
 
 ## Bootstrap
 
@@ -146,7 +184,7 @@ Constructing the same feature class twice triggers `_doing_it_wrong` and does no
 
 ## Runtime add / remove / pause
 
-Same config shapes as the DSL value side (`null`, `int`, `string`, or `[method, priority]`):
+Same config shapes as the DSL value side (`null`, `int`, `string`, `[method, priority]`, or a method→priority map — see [Multiple callbacks](#multiple-callbacks)):
 
 ```php
 $auth = Feature::get( Auth::class );
@@ -157,7 +195,7 @@ $auth->remove_filter( 'the_content' );
 $auth->remove_action( 'init' );
 ```
 
-`remove_*` uses the instance registry so WordPress receives the original `[$this, $method]` callback and priority. Remove is permanent (metadata is discarded).
+`remove_*` uses the instance registry so WordPress receives the original `[$this, $method]` callback and priority. Remove is permanent (metadata is discarded). An optional second `$method` argument targets one callback when several are registered on the same hook.
 
 Pause temporarily detaches a hook but keeps method and priority so it can be resumed later:
 
