@@ -11,15 +11,35 @@ Declarative WordPress hook registration for PHP feature classes.
 
 ## Installation
 
-Copy [`class-feature.php`](class-feature.php) into your project and load it once, eg.:
+```bash
+composer require urlund/wordpress-feature
+```
+
+Or, until published on Packagist, require it from GitHub:
+
+```json
+{
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/urlund/wordpress-feature"
+        }
+    ],
+    "require": {
+        "urlund/wordpress-feature": "dev-main"
+    }
+}
+```
+
+Composer PSR-4 autoloads `Urlund\WordPress\Feature` from `src/Feature.php`.
+
+You can also load it manually without Composer. Copy [`src/Feature.php`](src/Feature.php) into your project and require it once:
 
 ```php
 require_once __DIR__ . '/inc/class-feature.php';
 ```
 
-The file is guarded with `class_exists`, so it is safe to `require_once` from a plugin and a theme.
-
-Namespace:
+The file is guarded with `class_exists`, so it is safe to `require_once` from a plugin and a theme, or alongside Composer.
 
 ```php
 use Urlund\WordPress\Feature;

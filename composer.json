@@ -1,0 +1,19 @@
+{
+    "name": "urlund/wordpress-feature",
+    "description": "Declarative WordPress hook registration for PHP feature classes.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Henrik Urlund"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "Urlund\\WordPress\\": "src/"
+        }
+    }
+}
