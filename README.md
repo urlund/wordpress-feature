@@ -15,23 +15,7 @@ Declarative WordPress hook registration for PHP feature classes.
 composer require urlund/wordpress-feature
 ```
 
-Or, until published on Packagist, require it from GitHub:
-
-```json
-{
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/urlund/wordpress-feature"
-        }
-    ],
-    "require": {
-        "urlund/wordpress-feature": "dev-main"
-    }
-}
-```
-
-Composer PSR-4 autoloads `Urlund\WordPress\Feature` from `src/Feature.php`.
+Available on [Packagist](https://packagist.org/packages/urlund/wordpress-feature). Composer PSR-4 autoloads `Urlund\WordPress\Feature` from `src/Feature.php`.
 
 You can also load it manually without Composer. Copy [`src/Feature.php`](src/Feature.php) into your project and require it once:
 
