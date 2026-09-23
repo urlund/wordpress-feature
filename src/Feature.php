@@ -10,6 +10,7 @@ namespace Urlund\WordPress;
 
 use InvalidArgumentException;
 use ReflectionClass;
+use ReflectionFunction;
 use ReflectionMethod;
 
 if ( class_exists( __NAMESPACE__ . '\\Feature', false ) ) {
@@ -59,7 +60,7 @@ class Feature {
 					static::class,
 					static::class
 				),
-				defined( 'NKT_DEV_VERSION' ) ? NKT_DEV_VERSION : '1.0.0'
+				'1.0.0'
 			);
 			return;
 		}
@@ -103,7 +104,7 @@ class Feature {
 			_doing_it_wrong(
 				__METHOD__,
 				'Expected a class string or an array of features.',
-				defined( 'NKT_DEV_VERSION' ) ? NKT_DEV_VERSION : '1.0.0'
+				'1.0.0'
 			);
 			return;
 		}
@@ -117,7 +118,7 @@ class Feature {
 					_doing_it_wrong(
 						__METHOD__,
 						sprintf( 'Feature path for %s must be a string.', $class ),
-						defined( 'NKT_DEV_VERSION' ) ? NKT_DEV_VERSION : '1.0.0'
+						'1.0.0'
 					);
 					continue;
 				}
@@ -130,7 +131,7 @@ class Feature {
 					_doing_it_wrong(
 						__METHOD__,
 						'Feature list entries must be class strings.',
-						defined( 'NKT_DEV_VERSION' ) ? NKT_DEV_VERSION : '1.0.0'
+						'1.0.0'
 					);
 					continue;
 				}
@@ -141,7 +142,7 @@ class Feature {
 				_doing_it_wrong(
 					__METHOD__,
 					sprintf( 'Feature class %s could not be loaded.', $class ),
-					defined( 'NKT_DEV_VERSION' ) ? NKT_DEV_VERSION : '1.0.0'
+					'1.0.0'
 				);
 				continue;
 			}
@@ -329,10 +330,34 @@ class Feature {
 		);
 	}
 
-	protected function resolve_accepted_args( string $method ): int {
-		$ref = new ReflectionMethod( $this, $method );
+	/**
+	 * Resolve a callback name to a WordPress callable and accepted_args.
+	 *
+	 * Prefers a class method, then falls back to a global function.
+	 *
+	 * @return array{0: callable, 1: int}
+	 */
+	private function resolve_callback( string $name, string $hook ): array {
+		if ( method_exists( $this, $name ) ) {
+			$ref = new ReflectionMethod( $this, $name );
 
-		return $ref->getNumberOfParameters();
+			return array( array( $this, $name ), $ref->getNumberOfParameters() );
+		}
+
+		if ( function_exists( $name ) ) {
+			$ref = new ReflectionFunction( $name );
+
+			return array( $name, $ref->getNumberOfParameters() );
+		}
+
+		throw new InvalidArgumentException(
+			sprintf(
+				'Feature %s has no method or function %s for hook %s.',
+				static::class,
+				$name,
+				$hook
+			)
+		);
 	}
 
 	/**
@@ -348,14 +373,7 @@ class Feature {
 	private function register_callback( string $type, string $hook, string $method, int $priority ): void {
 		$this->unregister_hook( $type, $hook, $method );
 
-		if ( ! method_exists( $this, $method ) ) {
-			throw new InvalidArgumentException(
-				sprintf( 'Feature %s has no method %s for hook %s.', static::class, $method, $hook )
-			);
-		}
-
-		$accepted_args = $this->resolve_accepted_args( $method );
-		$callback      = array( $this, $method );
+		list( $callback, $accepted_args ) = $this->resolve_callback( $method, $hook );
 
 		if ( 'filter' === $type ) {
 			add_filter( $hook, $callback, $priority, $accepted_args );
@@ -404,7 +422,7 @@ class Feature {
 	 * @param array{method: string, priority: int} $entry Registered or paused callback entry.
 	 */
 	private function detach_callback( string $type, string $hook, array $entry ): void {
-		$callback = array( $this, $entry['method'] );
+		list( $callback ) = $this->resolve_callback( $entry['method'], $hook );
 
 		if ( 'filter' === $type ) {
 			remove_filter( $hook, $callback, $entry['priority'] );
@@ -417,10 +435,10 @@ class Feature {
 	 * @param array{method: string, priority: int} $entry Paused callback entry.
 	 */
 	private function attach_callback( string $type, string $hook, array $entry ): void {
-		$method        = $entry['method'];
-		$priority      = $entry['priority'];
-		$accepted_args = $this->resolve_accepted_args( $method );
-		$callback      = array( $this, $method );
+		$method   = $entry['method'];
+		$priority = $entry['priority'];
+
+		list( $callback, $accepted_args ) = $this->resolve_callback( $method, $hook );
 
 		if ( 'filter' === $type ) {
 			add_filter( $hook, $callback, $priority, $accepted_args );

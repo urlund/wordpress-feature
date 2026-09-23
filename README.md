@@ -79,7 +79,7 @@ Feature::bootstrap( Auth::class );
 
 ## Hook DSL
 
-Each `$filters` / `$actions` entry normalizes to hook name, callback method, and priority. The same entry shapes apply to both. `accepted_args` is taken from `ReflectionMethod::getNumberOfParameters()` on the callback.
+Each `$filters` / `$actions` entry normalizes to hook name, callback, and priority. The same entry shapes apply to both. Named callbacks resolve to a class method first, then to a global function (`function_exists`). `accepted_args` is taken from reflection on the resolved callback (`ReflectionMethod` or `ReflectionFunction`).
 
 | Entry | Hook | Method | Priority |
 | --- | --- | --- | --- |
@@ -88,9 +88,18 @@ Each `$filters` / `$actions` entry normalizes to hook name, callback method, and
 | `'foo_filter' => 'bar_callback'` | `foo_filter` | `bar_callback` | `10` |
 | `'wp_loaded' => ['setup', 20]` | `wp_loaded` | `setup` | `20` |
 
+Global WordPress helpers work when named explicitly:
+
+```php
+protected $filters = [
+    'show_admin_bar' => '__return_false',
+    'woocommerce_enable_setup_wizard' => ['__return_false', 20],
+];
+```
+
 For multiple callbacks on one hook, see [Multiple callbacks](#multiple-callbacks).
 
-Invalid shapes throw `InvalidArgumentException`. Missing callback methods also throw.
+Invalid shapes throw `InvalidArgumentException`. Missing callbacks (neither a class method nor a global function) also throw.
 
 ## Parent merging
 
@@ -195,7 +204,7 @@ $auth->remove_filter( 'the_content' );
 $auth->remove_action( 'init' );
 ```
 
-`remove_*` uses the instance registry so WordPress receives the original `[$this, $method]` callback and priority. Remove is permanent (metadata is discarded). An optional second `$method` argument targets one callback when several are registered on the same hook.
+`remove_*` uses the instance registry so WordPress receives the original resolved callback (`[$this, $method]` or a global function name) and priority. Remove is permanent (metadata is discarded). An optional second `$method` argument targets one callback when several are registered on the same hook.
 
 Pause temporarily detaches a hook but keeps method and priority so it can be resumed later:
 
