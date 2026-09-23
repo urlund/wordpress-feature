@@ -138,7 +138,7 @@ class Feature {
 				$class = $value;
 			}
 
-			if ( ! class_exists( $class, false ) ) {
+			if ( ! class_exists( $class ) ) {
 				_doing_it_wrong(
 					__METHOD__,
 					sprintf( 'Feature class %s could not be loaded.', $class ),
