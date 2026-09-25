@@ -194,6 +194,22 @@ $auth->remove_filter( 'the_content', 'sanitize' );
 
 `resume_*` and `remove_*` use the same optional second `$method` argument (including for actions).
 
+## Path helpers
+
+Resolve the plugin or theme package that contains the **concrete** feature class (`static::class`), not `Feature.php` in `vendor/`.
+
+```php
+// In a plugin feature:
+$path = self::get_plugin_dir() . 'files/settings.json';
+$url  = self::get_plugin_url() . 'assets/app.js';
+
+// In a theme feature:
+$path = self::get_theme_dir() . 'assets/acf/blocks/' . $block . '/field-groups.json';
+$url  = self::get_theme_url() . 'assets/app.css';
+```
+
+Dirs and URLs include a trailing slash. Theme helpers use the theme that owns the class file (e.g. parent theme code stays parent even when a child is active). Calling `get_plugin_*` from a theme feature (or the reverse) throws `InvalidArgumentException`.
+
 ## Bootstrap
 
 Instantiate one or many features. Optional file paths load classes that are not autoloaded yet (`Auth::class` is a compile-time string and does not require the class to exist).

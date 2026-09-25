@@ -29,6 +29,13 @@ class Feature {
 	private static $instances = array();
 
 	/**
+	 * Cached package root (plugin or theme) per feature class.
+	 *
+	 * @var array<class-string<self>, array{type: string, dir: string, url: string}>
+	 */
+	private static $packages = array();
+
+	/**
 	 * @var array{
 	 *     filter: array<string, array<string, array{method: string, priority: int}>>,
 	 *     action: array<string, array<string, array{method: string, priority: int}>>
@@ -155,6 +162,260 @@ class Feature {
 		}
 	}
 
+	/**
+	 * Filesystem directory of the plugin that contains this feature class.
+	 *
+	 * Resolves from `static::class` (the concrete feature), not from Feature.php.
+	 *
+	 * @throws InvalidArgumentException If the class file is not inside a plugin.
+	 */
+	public static function get_plugin_dir(): string {
+		$package = self::resolve_package();
+
+		if ( 'plugin' !== $package['type'] && 'mu-plugin' !== $package['type'] ) {
+			throw new InvalidArgumentException(
+				sprintf( 'Feature %s is not located inside a WordPress plugin.', static::class )
+			);
+		}
+
+		return $package['dir'];
+	}
+
+	/**
+	 * URL of the plugin that contains this feature class.
+	 *
+	 * @throws InvalidArgumentException If the class file is not inside a plugin.
+	 */
+	public static function get_plugin_url(): string {
+		$package = self::resolve_package();
+
+		if ( 'plugin' !== $package['type'] && 'mu-plugin' !== $package['type'] ) {
+			throw new InvalidArgumentException(
+				sprintf( 'Feature %s is not located inside a WordPress plugin.', static::class )
+			);
+		}
+
+		return $package['url'];
+	}
+
+	/**
+	 * Filesystem directory of the theme that contains this feature class.
+	 *
+	 * Resolves from `static::class` (the theme that owns the feature code), not the
+	 * active stylesheet when that differs (e.g. parent feature + active child).
+	 *
+	 * @throws InvalidArgumentException If the class file is not inside a theme.
+	 */
+	public static function get_theme_dir(): string {
+		$package = self::resolve_package();
+
+		if ( 'theme' !== $package['type'] ) {
+			throw new InvalidArgumentException(
+				sprintf( 'Feature %s is not located inside a WordPress theme.', static::class )
+			);
+		}
+
+		return $package['dir'];
+	}
+
+	/**
+	 * URL of the theme that contains this feature class.
+	 *
+	 * @throws InvalidArgumentException If the class file is not inside a theme.
+	 */
+	public static function get_theme_url(): string {
+		$package = self::resolve_package();
+
+		if ( 'theme' !== $package['type'] ) {
+			throw new InvalidArgumentException(
+				sprintf( 'Feature %s is not located inside a WordPress theme.', static::class )
+			);
+		}
+
+		return $package['url'];
+	}
+
+	/**
+	 * @return array{type: string, dir: string, url: string}
+	 */
+	private static function resolve_package(): array {
+		$class = static::class;
+
+		if ( isset( self::$packages[ $class ] ) ) {
+			return self::$packages[ $class ];
+		}
+
+		$ref  = new ReflectionClass( $class );
+		$file = $ref->getFileName();
+
+		if ( ! is_string( $file ) || $file === '' ) {
+			throw new InvalidArgumentException(
+				sprintf( 'Feature %s has no resolvable class file.', $class )
+			);
+		}
+
+		$file = wp_normalize_path( $file );
+
+		$real = realpath( $file );
+		if ( is_string( $real ) && $real !== '' ) {
+			$file = wp_normalize_path( $real );
+		}
+
+		$package = self::resolve_plugin_package( $file );
+
+		if ( null === $package ) {
+			$package = self::resolve_theme_package( $file );
+		}
+
+		if ( null === $package ) {
+			throw new InvalidArgumentException(
+				sprintf( 'Feature %s is not located inside a WordPress plugin or theme.', $class )
+			);
+		}
+
+		self::$packages[ $class ] = $package;
+
+		return $package;
+	}
+
+	/**
+	 * @return array{type: string, dir: string, url: string}|null
+	 */
+	private static function resolve_plugin_package( string $file ): ?array {
+		$candidates = array();
+
+		if ( defined( 'WP_PLUGIN_DIR' ) ) {
+			$candidates['plugin'] = self::normalize_existing_path( WP_PLUGIN_DIR );
+		}
+
+		if ( defined( 'WPMU_PLUGIN_DIR' ) ) {
+			$candidates['mu-plugin'] = self::normalize_existing_path( WPMU_PLUGIN_DIR );
+		}
+
+		foreach ( $candidates as $type => $base ) {
+			if ( null === $base ) {
+				continue;
+			}
+
+			if ( $file !== $base && strpos( $file, $base . '/' ) !== 0 ) {
+				continue;
+			}
+
+			$relative = trim( substr( $file, strlen( $base ) ), '/' );
+
+			if ( $relative === '' ) {
+				continue;
+			}
+
+			$parts = explode( '/', $relative );
+
+			if ( count( $parts ) === 1 ) {
+				$dir = trailingslashit( dirname( $file ) );
+
+				if ( 'mu-plugin' === $type ) {
+					$url = defined( 'WPMU_PLUGIN_URL' )
+						? trailingslashit( WPMU_PLUGIN_URL )
+						: trailingslashit( plugins_url( '', $file ) );
+				} else {
+					$url = trailingslashit( plugins_url( '', $file ) );
+				}
+
+				return array(
+					'type' => $type,
+					'dir'  => $dir,
+					'url'  => $url,
+				);
+			}
+
+			$slug = $parts[0];
+			$dir  = trailingslashit( $base . '/' . $slug );
+
+			if ( 'mu-plugin' === $type ) {
+				$url = defined( 'WPMU_PLUGIN_URL' )
+					? trailingslashit( WPMU_PLUGIN_URL . '/' . $slug )
+					: trailingslashit( plugins_url( $slug, $base . '/' . $slug . '/.' ) );
+			} else {
+				$url = trailingslashit( plugins_url( $slug ) );
+			}
+
+			return array(
+				'type' => $type,
+				'dir'  => $dir,
+				'url'  => $url,
+			);
+		}
+
+		return null;
+	}
+
+	/**
+	 * @return array{type: string, dir: string, url: string}|null
+	 */
+	private static function resolve_theme_package( string $file ): ?array {
+		$roots = array();
+
+		if ( ! empty( $GLOBALS['wp_theme_directories'] ) && is_array( $GLOBALS['wp_theme_directories'] ) ) {
+			foreach ( $GLOBALS['wp_theme_directories'] as $theme_root ) {
+				$normalized = self::normalize_existing_path( $theme_root );
+				if ( null !== $normalized ) {
+					$roots[] = $normalized;
+				}
+			}
+		} elseif ( function_exists( 'get_theme_root' ) ) {
+			$normalized = self::normalize_existing_path( get_theme_root() );
+			if ( null !== $normalized ) {
+				$roots[] = $normalized;
+			}
+		}
+
+		foreach ( $roots as $base ) {
+			if ( $file !== $base && strpos( $file, $base . '/' ) !== 0 ) {
+				continue;
+			}
+
+			$relative = trim( substr( $file, strlen( $base ) ), '/' );
+
+			if ( $relative === '' ) {
+				continue;
+			}
+
+			$slug  = explode( '/', $relative )[0];
+			$theme = wp_get_theme( $slug, $base );
+
+			if ( ! $theme->exists() ) {
+				$dir = trailingslashit( $base . '/' . $slug );
+				$url = trailingslashit( get_theme_root_uri( $slug, $base ) . '/' . $slug );
+
+				return array(
+					'type' => 'theme',
+					'dir'  => $dir,
+					'url'  => $url,
+				);
+			}
+
+			return array(
+				'type' => 'theme',
+				'dir'  => trailingslashit( wp_normalize_path( $theme->get_stylesheet_directory() ) ),
+				'url'  => trailingslashit( $theme->get_stylesheet_directory_uri() ),
+			);
+		}
+
+		return null;
+	}
+
+	/**
+	 * @param string $path Filesystem path.
+	 */
+	private static function normalize_existing_path( string $path ): ?string {
+		$path = wp_normalize_path( $path );
+		$real = realpath( $path );
+
+		if ( is_string( $real ) && $real !== '' ) {
+			return wp_normalize_path( $real );
+		}
+
+		return is_dir( $path ) ? $path : null;
+	}
 	/**
 	 * @param null|int|string|array{0: string, 1: int}|array<int|string, string|int|array{0: string, 1: int}> $config Hook config.
 	 */
