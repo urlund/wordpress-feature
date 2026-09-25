@@ -89,8 +89,9 @@ Each `$filters` / `$actions` entry normalizes to hook name, callback, and priori
 | `'wp_loaded' => ['setup', 20]` | `wp_loaded` | `setup` | `20` |
 | `'wp_enqueue_scripts' => ['enqueue_styles', 'enqueue_scripts']` | `wp_enqueue_scripts` | both | `10` each |
 | `'wp_enqueue_scripts' => ['enqueue_styles', ['enqueue_scripts', 20]]` | `wp_enqueue_scripts` | both | `10` / `20` |
+| `'wp_enqueue_scripts' => ['enqueue_styles', 'enqueue_scripts' => 20]` | `wp_enqueue_scripts` | both | `10` / `20` |
 
-A bare two-element `[method, priority]` value is always a **single** callback. For several callbacks on one hook, see [Multiple callbacks](#multiple-callbacks).
+A bare two-element `[method, priority]` value is always a **single** callback. For several callbacks on one hook (including mixes of bare names, map entries, and nested tuples), see [Multiple callbacks](#multiple-callbacks).
 
 Global WordPress helpers work when named explicitly:
 
@@ -128,23 +129,34 @@ class Auth extends BaseAuth {
 
 ## Multiple callbacks
 
-Most features need one callback per hook. When one feature must attach several methods to the same hook, use a method list. Bare method names default to priority `10`; nest a `[method, priority]` tuple for a custom priority:
+Most features need one callback per hook. When one feature must attach several methods to the same hook, use a multi-callback array. Inside that array, each entry can be:
+
+- a bare method name (priority `10`)
+- a `method => priority` map entry
+- a nested `[method, priority]` tuple
+
+These forms can be mixed freely:
 
 ```php
 protected $actions = [
+    'init',
+    'admin_notices' => 20,
+    'wp_head' => ['my_wp_head', 20],
     'wp_enqueue_scripts' => [
         'enqueue_styles',
-        'enqueue_scripts',
-    ],
-];
-
-protected $actions = [
-    'wp_enqueue_scripts' => [
-        'enqueue_styles',
-        'enqueue_more_styles',
+        'enqueue_more_styles' => 20,
         ['enqueue_scripts', 20],
     ],
 ];
+
+public function init(): void {
+}
+
+public function admin_notices(): void {
+}
+
+public function my_wp_head(): void {
+}
 
 public function enqueue_styles(): void {
 }
@@ -156,9 +168,7 @@ public function enqueue_scripts(): void {
 }
 ```
 
-The same list form works on `$filters`.
-
-A pure method→priority map is also valid when every callback has an explicit priority:
+The same shapes work on `$filters`. A pure method→priority map is still valid when every callback has an explicit priority:
 
 ```php
 protected $filters = [
@@ -169,25 +179,9 @@ protected $filters = [
 ];
 ```
 
-Do not mix bare method names with `method => priority` in one array (map-in-list). That shape is not supported — use a nested `[method, priority]` tuple instead:
-
-```php
-// Not supported — invalid
-'wp_enqueue_scripts' => [
-    'enqueue_styles',
-    'enqueue_scripts' => 20,
-],
-
-// Supported — nested tuple
-'wp_enqueue_scripts' => [
-    'enqueue_styles',
-    ['enqueue_scripts', 20],
-],
-```
-
 Identity inside a feature is `(hook, method)`; priority is metadata only, not part of the key.
 
-Parent merging still replaces the **whole** hook config when a child redeclares that hook (a list or map replaces a single callback and vice versa).
+Parent merging still replaces the **whole** hook config when a child redeclares that hook (a multi-callback array replaces a single callback and vice versa).
 
 Target one callback or all for a hook:
 
@@ -233,7 +227,7 @@ Constructing the same feature class twice triggers `_doing_it_wrong` and does no
 
 ## Runtime add / remove / pause
 
-Same config shapes as the DSL value side (`null`, `int`, `string`, `[method, priority]`, a method→priority map, or a method list — see [Multiple callbacks](#multiple-callbacks)):
+Same config shapes as the DSL value side (`null`, `int`, `string`, `[method, priority]`, or a multi-callback array of bare names / map entries / nested tuples — see [Multiple callbacks](#multiple-callbacks)):
 
 ```php
 $auth = Feature::get( Auth::class );

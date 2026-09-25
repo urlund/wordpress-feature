@@ -156,7 +156,7 @@ class Feature {
 	}
 
 	/**
-	 * @param null|int|string|array{0: string, 1: int}|array<string, int>|list<string|array{0: string, 1: int}> $config Hook config.
+	 * @param null|int|string|array{0: string, 1: int}|array<int|string, string|int|array{0: string, 1: int}> $config Hook config.
 	 */
 	public function add_filter( string $hook, $config = null ): void {
 		$this->register_hook( 'filter', $hook, $config );
@@ -175,7 +175,7 @@ class Feature {
 	}
 
 	/**
-	 * @param null|int|string|array{0: string, 1: int}|array<string, int>|list<string|array{0: string, 1: int}> $config Hook config.
+	 * @param null|int|string|array{0: string, 1: int}|array<int|string, string|int|array{0: string, 1: int}> $config Hook config.
 	 */
 	public function add_action( string $hook, $config = null ): void {
 		$this->register_hook( 'action', $hook, $config );
@@ -194,7 +194,7 @@ class Feature {
 	}
 
 	/**
-	 * @return array<string, null|int|string|array{0: string, 1: int}|array<string, int>|list<string|array{0: string, 1: int}>>
+	 * @return array<string, null|int|string|array{0: string, 1: int}|array<int|string, string|int|array{0: string, 1: int}>>
 	 */
 	protected function collect_merged_hooks( string $property ): array {
 		$merged      = array();
@@ -232,7 +232,7 @@ class Feature {
 	/**
 	 * @param int|string $key   Array key from $filters / $actions.
 	 * @param mixed      $value Array value from $filters / $actions.
-	 * @return array{0: string, 1: null|int|string|array{0: string, 1: int}|array<string, int>|list<string|array{0: string, 1: int}>}
+	 * @return array{0: string, 1: null|int|string|array{0: string, 1: int}|array<int|string, string|int|array{0: string, 1: int}>}
 	 */
 	protected function normalize_hook_entry( $key, $value ): array {
 		if ( is_int( $key ) ) {
@@ -259,11 +259,7 @@ class Feature {
 			return array( $key, $value );
 		}
 
-		if ( $this->is_method_priority_map( $value ) ) {
-			return array( $key, $value );
-		}
-
-		if ( $this->is_method_list( $value ) ) {
+		if ( $this->is_method_configs_array( $value ) ) {
 			return array( $key, $value );
 		}
 
@@ -284,6 +280,8 @@ class Feature {
 	}
 
 	/**
+	 * Pure method→priority map (all string keys, int priorities).
+	 *
 	 * @param mixed $value Candidate config value.
 	 */
 	protected function is_method_priority_map( $value ): bool {
@@ -301,25 +299,26 @@ class Feature {
 	}
 
 	/**
-	 * List of method names and/or nested [method, priority] tuples.
+	 * Multi-callback config: bare method names, method→priority map entries,
+	 * and/or nested [method, priority] tuples (including mixes of those).
 	 *
 	 * @param mixed $value Candidate config value.
 	 */
-	protected function is_method_list( $value ): bool {
+	protected function is_method_configs_array( $value ): bool {
 		if ( ! is_array( $value ) || $value === array() ) {
 			return false;
 		}
 
 		foreach ( $value as $key => $item ) {
-			if ( ! is_int( $key ) ) {
-				return false;
-			}
-
-			if ( is_string( $item ) && $item !== '' ) {
+			if ( is_string( $key ) && $key !== '' && is_int( $item ) ) {
 				continue;
 			}
 
-			if ( $this->is_method_priority_tuple( $item ) ) {
+			if ( is_int( $key ) && is_string( $item ) && $item !== '' ) {
+				continue;
+			}
+
+			if ( is_int( $key ) && $this->is_method_priority_tuple( $item ) ) {
 				continue;
 			}
 
@@ -330,7 +329,7 @@ class Feature {
 	}
 
 	/**
-	 * @param null|int|string|array{0: string, 1: int}|array<string, int>|list<string|array{0: string, 1: int}> $config Hook config.
+	 * @param null|int|string|array{0: string, 1: int}|array<int|string, string|int|array{0: string, 1: int}> $config Hook config.
 	 * @return array<int, array{0: string, 1: int}>
 	 */
 	protected function expand_hook_configs( string $hook, $config ): array {
@@ -350,18 +349,12 @@ class Feature {
 			return array( array( $config[0], $config[1] ) );
 		}
 
-		if ( $this->is_method_priority_map( $config ) ) {
+		if ( $this->is_method_configs_array( $config ) ) {
 			$pairs = array();
-			foreach ( $config as $method => $priority ) {
-				$pairs[] = array( $method, $priority );
-			}
-			return $pairs;
-		}
-
-		if ( $this->is_method_list( $config ) ) {
-			$pairs = array();
-			foreach ( $config as $item ) {
-				if ( is_string( $item ) ) {
+			foreach ( $config as $key => $item ) {
+				if ( is_string( $key ) && is_int( $item ) ) {
+					$pairs[] = array( $key, $item );
+				} elseif ( is_string( $item ) ) {
 					$pairs[] = array( $item, 10 );
 				} else {
 					$pairs[] = array( $item[0], $item[1] );
@@ -406,7 +399,7 @@ class Feature {
 	}
 
 	/**
-	 * @param null|int|string|array{0: string, 1: int}|array<string, int>|list<string|array{0: string, 1: int}> $config Hook config.
+	 * @param null|int|string|array{0: string, 1: int}|array<int|string, string|int|array{0: string, 1: int}> $config Hook config.
 	 */
 	private function register_hook( string $type, string $hook, $config ): void {
 		foreach ( $this->expand_hook_configs( $hook, $config ) as $pair ) {
